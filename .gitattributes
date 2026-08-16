@@ -1,0 +1,13 @@
+# 统一换行符：文本文件入库一律 LF，工作区检出按平台处理
+* text=auto
+
+*.py   text eol=lf
+*.md   text eol=lf
+*.json text eol=lf
+*.txt  text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+*.bat  text eol=crlf
+
+# 二进制：结构文件是压缩/未压缩 NBT，禁止任何换行转换
+*.mcstructure binary
