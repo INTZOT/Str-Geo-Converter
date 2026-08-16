@@ -4,21 +4,23 @@
 生成项目内置的 data/map_colors.json（方块地图色表）。
 
 用法:
+    python tools/generate_map_colors.py --from-ref <mapcolors.html> [-o data/map_colors.json]
     python tools/generate_map_colors.py --from-wiki <map_item_format.html> [-o data/map_colors.json]
     python tools/generate_map_colors.py --from-blocks <vanilla blocks.json> [-o data/map_colors.json]
 
-数据来源（二选一）:
-    1. Minecraft Wiki "Map item format" 页面（推荐，可直接下载 HTML）:
+数据来源（三选一）:
+    1. 基岩版地图基色表（推荐，逐方块 ID 855 条，含 per-color 变体）:
+       https://comeixalpha.github.io/ref/mapcolors/  （Colorify Docs）
+    2. Minecraft Wiki "Map item format" 页面（Java 源，64 基础色）:
        https://minecraft.wiki/w/Map_item_format
-       页面 "Base colors" 表格列出 64 种基础色及其方块清单，RGB 值即地图渲染色，
-       与基岩版 blocks.json 的 map_color 一致。
-    2. 基岩版 vanilla 行为包的 blocks.json（每个方块条目含 map_color 字段）。
+    3. 基岩版 vanilla 行为包的 blocks.json（每个方块条目含 map_color 字段）。
 
-生成的表包含两部分:
+生成的表包含:
     - colors:            方块 ID -> 十六进制颜色（基表）
     - state_overrides:   state 覆盖表（如羊毛/陶瓦/玻璃的 ``color`` state、
                         木头的 ``wood_type`` state），因为基岩版把同色系方块
                         归为单个 ID + state，blocks.json 本身无法区分。
+    - block_overrides:   特定方块的 state 覆盖（如陶瓦的 16 色与羊毛不同）。
 
 生成的 JSON 与 mc_geo_converter.py 中 map_color_for() 的读取逻辑对应。
 """
@@ -497,6 +499,89 @@ def _bedrock_id(parts: Sequence[str]) -> Optional[str]:
     return "minecraft:" + _JAVA_TO_BEDROCK.get(joined, joined)
 
 
+# --- 基岩版地图基色表（comeixalpha / Colorify Docs） -------------------------
+
+_DYE_ORDER = [
+    "white", "orange", "magenta", "light_blue", "yellow", "lime", "pink",
+    "gray", "light_gray", "cyan", "purple", "blue", "brown", "green", "red",
+    "black",
+]
+# ref 表格命名 -> 基岩版 color state 值
+_DYE_STATE_NAMES = {"light_gray": "silver"}
+
+# ref 表中缺失/错误的值（来自 wiki 交叉验证后的人工修正）
+_REF_FIXES = {
+    "minecraft:tube_coral": "#334cb2",
+    "minecraft:brain_coral": "#f27fa5",
+    "minecraft:bubble_coral": "#7f3fb2",
+    "minecraft:fire_coral": "#993333",
+    "minecraft:horn_coral": "#e5e533",
+    "minecraft:redstone_lamp": "#9f5224",
+    "minecraft:pointed_dripstone": "#4c3223",
+    "minecraft:pink_petals": "#007c00",
+}
+
+# ref 命名 -> 基岩版实际方块 ID（camelCase 等差异）
+_REF_ID_RENAMES = {
+    "minecraft:sea_lantern": "minecraft:seaLantern",
+}
+
+
+def _parse_ref_html(path: str) -> Dict[str, str]:
+    """解析基岩版地图基色表页面，返回 {方块ID: #rrggbb}。"""
+    with open(path, encoding="utf-8") as fileobj:
+        raw = fileobj.read()
+    tables = re.findall(r"<table.*?</table>", raw, re.S)
+    if not tables:
+        raise ValueError("HTML 中未找到颜色表格（请使用 comeixalpha.github.io/ref/mapcolors/ 页面）")
+    ref: Dict[str, str] = {}
+    for row in re.findall(r"<tr>(.*?)</tr>", tables[0], re.S):
+        cells = re.findall(r"<td[^>]*>(.*?)</td>", row, re.S)
+        if len(cells) < 2:
+            continue
+        bid = html.unescape(re.sub(r"<[^>]+>", "", cells[0])).strip()
+        hexv = html.unescape(re.sub(r"<[^>]+>", "", cells[1])).strip().lower()
+        if bid.startswith("minecraft:") and _HEX_RE.match(hexv):
+            ref[bid] = "#" + hexv.lstrip("#")
+    if not ref:
+        raise ValueError("未能从表格解析到任何颜色")
+    return ref
+
+
+def build_table_from_ref(ref: Dict[str, str]) -> Dict[str, object]:
+    """以基岩版地图基色表为底，合并人工修正与 state 覆盖。"""
+    colors = {bid: hexv for bid, hexv in ref.items() if hexv != "#000000"}
+    for old_id, new_id in _REF_ID_RENAMES.items():
+        if old_id in colors:
+            colors[new_id] = colors.pop(old_id)
+    colors.update(_REF_FIXES)
+    dye_overrides: Dict[str, str] = {}
+    for name in _DYE_ORDER:
+        value = ref.get(f"minecraft:{name}_wool")
+        if value:
+            dye_overrides[_DYE_STATE_NAMES.get(name, name)] = value
+    wood_overrides: Dict[str, str] = {}
+    for name in sorted(_WOOD_WORDS):
+        value = ref.get(f"minecraft:{name}_planks")
+        if value:
+            wood_overrides[name] = value
+    terracotta: Dict[str, str] = {}
+    for name in _DYE_ORDER:
+        value = ref.get(f"minecraft:{name}_terracotta")
+        if value:
+            terracotta[_DYE_STATE_NAMES.get(name, name)] = value
+    return {
+        "colors": dict(sorted(colors.items())),
+        "state_overrides": {
+            "color": dict(sorted(dye_overrides.items())),
+            "wood_type": dict(sorted(wood_overrides.items())),
+        },
+        "block_overrides": {
+            "minecraft:stained_hardened_clay": {"color": dict(sorted(terracotta.items()))}
+        },
+    }
+
+
 def build_table_from_wiki(rows: Sequence[Tuple[str, str, List[str]]]) -> Dict[str, object]:
     colors: Dict[str, str] = {}
     dye_from_wool: Dict[str, str] = {}
@@ -558,6 +643,7 @@ def build_table_from_wiki(rows: Sequence[Tuple[str, str, List[str]]]) -> Dict[st
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--from-ref", metavar="HTML", help="基岩版地图基色表（comeixalpha.github.io/ref/mapcolors/）HTML 路径")
     source.add_argument("--from-wiki", metavar="HTML", help="Minecraft Wiki Map item format 页面 HTML 路径")
     source.add_argument("--from-blocks", metavar="JSON", help="vanilla 行为包 blocks.json 路径")
     parser.add_argument(
@@ -567,7 +653,17 @@ def main(argv=None) -> int:
     )
     args = parser.parse_args(argv)
 
-    if args.from_blocks:
+    if args.from_ref:
+        ref = _parse_ref_html(args.from_ref)
+        table = build_table_from_ref(ref)
+        table["meta"] = {
+            "source": "comeixalpha.github.io/ref/mapcolors/ (基岩版地图基色表) + wiki 交叉修正",
+            "input_file": os.path.basename(args.from_ref),
+            "generated": datetime.date.today().isoformat(),
+            "block_count": len(table["colors"]),
+        }
+        skip_info = None
+    elif args.from_blocks:
         colors, skipped = _parse_blocks_json(args.from_blocks)
         if not colors:
             print(f"错误: 未从 {args.from_blocks} 中解析到任何 map_color", file=sys.stderr)
@@ -604,9 +700,15 @@ def main(argv=None) -> int:
         fileobj.write("\n")
 
     overrides = table["state_overrides"]
+    block_overrides = table.get("block_overrides")
     print(f"已写出: {args.output}")
     print(f"  方块颜色: {len(table['colors'])} 项")
     print(f"  state 覆盖: color={len(overrides['color'])}  wood_type={len(overrides['wood_type'])}")
+    if block_overrides:
+        print(
+            "  block 覆盖: "
+            + ", ".join(f"{bid}({len(bucket['color'])}色)" for bid, bucket in block_overrides.items())
+        )
     if skip_info is not None:
         print(f"  （跳过无 map_color 的条目: {skip_info}）")
     return 0

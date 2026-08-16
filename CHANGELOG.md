@@ -9,13 +9,15 @@
 
 - 项目以 [MIT 许可证](LICENSE) 开源（Copyright © 2026 INTZOT）。
 - `to-geo` 新增 `--map-color-texture`：按方块地图色自动生成色块贴图图集
-  （`.png` + per-face UV），内置 `data/map_colors.json` 颜色表
-  （505 个方块基色 + 16 染料 + 11 木材 state 覆盖），支持 Minecraft 风面着色；
+  （`.png` + per-face UV），内置 `data/map_colors.json` 颜色表，支持 Minecraft 风面着色；
   GUI 同步增加「生成 map-color 贴图」开关。
-- 颜色表数据来源：Minecraft Wiki「Map item format」Base colors 表
-  （RGB 值即地图渲染色，与基岩版 blocks.json 的 map_color 一致），
-  可由 `tools/generate_map_colors.py --from-wiki` 重新生成；
-  也支持 `--from-blocks` 模式从 vanilla 行为包 blocks.json 生成。
+- 颜色表以[基岩版地图基色表](https://comeixalpha.github.io/ref/mapcolors/)（770 个方块 ID）
+  为底重新生成，经 Minecraft Wiki 交叉校验：
+  - 新增方块级覆盖（`block_overrides`）：陶瓦 16 色与羊毛不同（如红陶瓦 `#8e3c2e`）；
+  - 修正紫系为基岩版值 `#995acd`，采纳基岩版专属差异（水 `#1e5af5`、草方块 `#92bc58`、
+    sculk `#0d1217`、紫水晶 `#995acd`、床 `#993333` 等）；
+  - 拒绝参考表错误条目（珊瑚误为草绿、玻璃板/红石灯透明等），保留 wiki 交叉验证值；
+  - 生成器新增 `--from-ref` 模式。
 
 ## [1.1.0] - 2026-08-17
 

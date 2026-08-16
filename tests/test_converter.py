@@ -503,6 +503,31 @@ class MapColorTextureTests(unittest.TestCase):
         with self.assertRaises(m.ConverterError):
             m.build_map_color_texture(groups, self._small_table(), "bad", tile_size=12)
 
+    def test_block_level_color_override(self):
+        table = {
+            "colors": {},
+            "state_overrides": {"color": {"red": "#993333"}},
+            "block_overrides": {
+                "minecraft:stained_hardened_clay": {"color": {"red": "#8e3c2e"}}
+            },
+        }
+        rgb, found = m.map_color_for(
+            m.BlockRef(
+                "minecraft:stained_hardened_clay",
+                (("color", m.BlockState("string", "red")),),
+            ),
+            table,
+        )
+        self.assertTrue(found)
+        self.assertEqual(rgb, (0x8E, 0x3C, 0x2E))
+        # 羊毛等仍走通用覆盖
+        rgb, found = m.map_color_for(
+            m.BlockRef("minecraft:wool", (("color", m.BlockState("string", "red")),)),
+            table,
+        )
+        self.assertTrue(found)
+        self.assertEqual(rgb, (0x99, 0x33, 0x33))
+
     def test_cli_map_color_texture_end_to_end(self):
         sample = ROOT / "samples" / "dirt_house.mcstructure"
         if not sample.exists():

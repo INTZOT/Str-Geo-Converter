@@ -697,7 +697,7 @@ DYE_COLORS = {
     "gray": (62, 68, 71),
     "silver": (142, 142, 134),
     "cyan": (21, 137, 145),
-    "purple": (121, 42, 172),
+    "purple": (153, 90, 205),
     "blue": (53, 57, 157),
     "brown": (114, 71, 40),
     "green": (84, 109, 27),
@@ -808,17 +808,26 @@ _WOOD_FAMILY_BLOCKS = frozenset(
 
 
 def map_color_for(ref: BlockRef, table: Dict[str, Any]) -> Tuple[Tuple[int, int, int], bool]:
-    """Look up a block's map color; returns ``(rgb, found_in_table)``."""
+    """Look up a block's map color; returns ``(rgb, found_in_table)``.
+
+    优先级: block 级 state 覆盖（如陶瓦 16 色）> 通用 state 覆盖
+    （color/wood_type）> 方块 ID 基色 > 默认灰。
+    """
     overrides: Dict[str, Dict[str, Any]] = {
         key: dict(bucket) for key, bucket in _BUILTIN_STATE_OVERRIDES.items()
     }
     for key, bucket in (table.get("state_overrides") or {}).items():
         if isinstance(bucket, dict):
             overrides[key] = {**overrides.get(key, {}), **bucket}
+    block_bucket = (table.get("block_overrides") or {}).get(ref.name)
     for key, state in ref.states:
         if key == "wood_type" and ref.name not in _WOOD_FAMILY_BLOCKS:
             continue
-        bucket = overrides.get(key)
+        bucket = None
+        if isinstance(block_bucket, dict):
+            bucket = block_bucket.get(key)
+        if bucket is None:
+            bucket = overrides.get(key)
         if bucket:
             color = bucket.get(str(state.value))
             if color is not None:

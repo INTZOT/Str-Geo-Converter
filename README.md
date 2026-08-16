@@ -199,10 +199,9 @@ python mc_geo_converter.py to-geo 输入.mcstructure -o 输出.geo.json --map-co
 会同时生成 `输出.png`（图集）与 `输出.geo.json`（`description.textures` 引用同名
 贴图 + per-face UV），Blockbench 打开即可看到带色模型。
 
-- 颜色查表优先级：`state_overrides`（如 `color="red"` 羊毛 → 红色）> 方块 ID 基色
-  > 默认灰色（`--map-colors` 可提供自定义表，例如行为包方块）；
+- 颜色查表优先级：方块级 state 覆盖（如陶瓦 16 色）> `state_overrides`（如 `color="red"` 羊毛 → 红色、`wood_type`）> 方块 ID 基色 > 默认灰色（`--map-colors` 可提供自定义表，例如行为包方块）；
 - 默认开启 Minecraft 风**面着色**：顶面亮、侧面中、底面暗（`--no-texture-shade` 关闭）；
-- 内置颜色表来自 vanilla 行为包，可用 `tools/generate_map_colors.py` 重新生成；
+- 内置颜色表以[基岩版地图基色表](https://comeixalpha.github.io/ref/mapcolors/)（770 个方块 ID）为底，经 Minecraft Wiki 交叉校验修正，可用 `tools/generate_map_colors.py --from-ref/--from-wiki/--from-blocks` 重新生成；
 - 局限性：地图色是去饱和扁平色，适合预览/占位/骨架，不能替代真实纹理；
   草、树叶等生物群系染色方块只有默认色调；自定义方块需自行提供颜色表。
 

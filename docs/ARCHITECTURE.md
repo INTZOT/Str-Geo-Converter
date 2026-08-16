@@ -109,11 +109,13 @@ write_png(path, texture)          # 纯标准库 PNG 编码器（zlib+struct，�
 structure_to_geometry(texture=)   # cube 写 per-face UV；description 写 textures + 图集尺寸
 ```
 
-颜色查表优先级：`state_overrides`（如羊毛 `color="red"` → 红色、木头 `wood_type`）
+颜色查表优先级：方块级 `block_overrides`（如陶瓦 16 色 `stained_hardened_clay`）
+> `state_overrides`（如羊毛 `color="red"` → 红色、木头 `wood_type`）
 > 方块 ID 基色 > 默认灰 `DEFAULT_MAP_COLOR`。内置覆盖表（`DYE_COLORS` /
 `WOOD_COLORS`）是兜底，表内同名字段优先；自定义表经 `--map-colors FILE` 传入，
-格式与 `data/map_colors.json` 一致（`tools/generate_map_colors.py` 可从 vanilla
-`blocks.json` 重新生成）。
+格式与 `data/map_colors.json` 一致。内置表以
+[基岩版地图基色表](https://comeixalpha.github.io/ref/mapcolors/) 为底生成
+（`tools/generate_map_colors.py --from-ref`，另支持 `--from-wiki` / `--from-blocks`）。
 
 ## 4. 管线二：`.geo.json` → `.mcstructure`（几何转结构）
 
