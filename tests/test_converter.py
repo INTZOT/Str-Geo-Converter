@@ -446,6 +446,19 @@ class MergeVoxelTests(unittest.TestCase):
         sizes = sorted(tuple(cube["size"]) for cube in cubes)
         self.assertEqual(sizes, [(1, 3, 1), (2, 1, 1)])
 
+    def test_merge_does_not_bridge_x_gaps(self):
+        # x=0 与 x=3 有同种方块，中间 x=1,2 空洞：不得粘连成一个大 cube
+        stone = m.BlockRef("minecraft:stone")
+        cells = {(0, 1, 0): 0, (3, 0, 1): 0, (3, 1, 0): 0}
+        data = m.StructureData(size=(4, 2, 2), primary=cells, secondary={}, palette=[stone])
+        geo = m.structure_to_geometry(data, source_stem="gap")
+        cubes = geo["minecraft:geometry"][0]["bones"][0]["cubes"]
+        self.assertEqual(len(cubes), 3)
+        sizes = sorted(tuple(cube["size"]) for cube in cubes)
+        self.assertEqual(sizes, [(1, 1, 1), (1, 1, 1), (1, 1, 1)])
+        origins = sorted(tuple(cube["origin"]) for cube in cubes)
+        self.assertEqual(origins, [(0, 1, 0), (3, 0, 1), (3, 1, 0)])
+
     def test_merge_can_be_disabled(self):
         stone = m.BlockRef("minecraft:stone")
         data = m.StructureData(

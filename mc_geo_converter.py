@@ -1038,8 +1038,9 @@ def _merge_cells(
         for rect in rects:
             key = (rect[0], rect[1], rect[2], rect[3])
             box = active.get(key)
-            if box is not None:
-                box[1] = x  # 沿 x 扩展
+            if box is not None and box[1] == x - 1:
+                # 仅当上一 x 片紧邻存在相同矩形时才扩展（防止跨空洞粘连）
+                box[1] = x
                 new_active[key] = box
             else:
                 box = [x, x, rect[0], rect[1], rect[2], rect[3]]
