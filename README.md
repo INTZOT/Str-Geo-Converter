@@ -1,4 +1,4 @@
-# StructureGeojsonTranslater
+# Str-Geo-Converter
 
 Minecraft **基岩版（Bedrock Edition）** `.geo.json` 几何模型文件与 `.mcstructure` 结构方块文件的双向转换工具。
 
@@ -9,7 +9,7 @@ Minecraft **基岩版（Bedrock Edition）** `.geo.json` 几何模型文件与 `
 ## 目录结构
 
 ```
-StructureGeojsonTranslater/
+Str-Geo-Converter/
 ├─ mc_geo_converter.py        # 核心转换脚本（命令行工具）
 ├─ mc_geo_converter_gui.py    # 可选图形界面（tkinter）
 ├─ requirements.txt           # 依赖：nbtlib
@@ -32,7 +32,7 @@ StructureGeojsonTranslater/
 需要 Python 3.9+。
 
 ```bat
-cd /d D:\Develop\StructureGeojsonTranslater
+cd /d D:\Develop\Str-Geo-Converter
 pip install -r requirements.txt
 ```
 

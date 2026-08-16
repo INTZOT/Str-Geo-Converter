@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""StructureGeojsonTranslater 的图形界面（可选，需要 Python 自带 tkinter）。
+"""Str-Geo-Converter 的图形界面（可选，需要 Python 自带 tkinter）。
 
 用法:
     python mc_geo_converter_gui.py
@@ -28,7 +28,7 @@ import mc_geo_converter as m
 class ConverterApp:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
-        root.title("StructureGeojsonTranslater - .geo.json <-> .mcstructure")
+        root.title("Str-Geo-Converter - .geo.json <-> .mcstructure")
         root.geometry("760x560")
         root.minsize(680, 480)
 

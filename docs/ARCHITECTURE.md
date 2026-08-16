@@ -8,7 +8,7 @@
 ## 1. 总览
 
 ```
-StructureGeojsonTranslater/
+Str-Geo-Converter/
 ├─ mc_geo_converter.py        # 核心：数据模型 + 两条转换管线 + argparse CLI（约 1250 行）
 ├─ mc_geo_converter_gui.py    # 可选 tkinter 图形界面，薄封装，直接复用核心函数
 ├─ tests/test_converter.py    # unittest 自检测试（无 pytest 依赖）
