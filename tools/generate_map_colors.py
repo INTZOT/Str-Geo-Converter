@@ -521,6 +521,70 @@ _REF_FIXES = {
     "minecraft:pink_petals": "#007c00",
 }
 
+# 三源裁决修正（mcpixelart 纹理最亮色 + wiki 地图色 2:1 反对 ref 的条目）
+_PIXELART_FIXES = {
+    "minecraft:grass_block": "#7fb238",
+    "minecraft:sculk": "#191919",
+    "minecraft:sculk_vein": "#191919",
+    "minecraft:sculk_catalyst": "#191919",
+    "minecraft:sculk_sensor": "#191919",
+    "minecraft:sculk_shrieker": "#191919",
+    "minecraft:calibrated_sculk_sensor": "#191919",
+    "minecraft:lodestone": "#a7a7a7",
+    "minecraft:target": "#fffcf5",
+    "minecraft:stripped_acacia_wood": "#d87f33",
+}
+
+# ref 缺失、由 mcpixelart 补充的 Bedrock 方块 ID（值取纹理最亮色档）
+_PIXELART_ADDITIONS = {
+    "minecraft:chiseled_quartz_block": "#fffcf5",
+    "minecraft:chiseled_red_sandstone": "#d87f33",
+    "minecraft:chiseled_resin_bricks": "#9f5224",
+    "minecraft:chiseled_sandstone": "#f7e9a3",
+    "minecraft:chiseled_stone_bricks": "#707070",
+    "minecraft:coarse_dirt": "#976d4d",
+    "minecraft:copper_ore": "#707070",
+    "minecraft:cracked_stone_bricks": "#707070",
+    "minecraft:creaking_heart": "#d87f33",
+    "minecraft:cut_red_sandstone": "#d87f33",
+    "minecraft:dark_prismarine": "#5cdbd5",
+    "minecraft:deepslate_copper_ore": "#646464",
+    "minecraft:light_gray_glazed_terracotta": "#999999",
+    "minecraft:magma_block": "#700200",
+    "minecraft:mushroom_stem": "#c7c7c7",
+    "minecraft:note_block": "#8f7748",
+    "minecraft:pale_moss_block": "#999999",
+    "minecraft:prismarine_bricks": "#5cdbd5",
+    "minecraft:purpur_pillar": "#b24cd8",
+    "minecraft:quartz_pillar": "#fffcf5",
+    "minecraft:raw_copper_block": "#d87f33",
+    "minecraft:red_sand": "#d87f33",
+    "minecraft:resin_block": "#9f5224",
+    "minecraft:resin_bricks": "#9f5224",
+    "minecraft:rooted_dirt": "#976d4d",
+    "minecraft:stripped_pale_oak_log": "#fffcf5",
+    "minecraft:stripped_pale_oak_wood": "#fffcf5",
+    "minecraft:waxed_chiseled_copper": "#d87f33",
+    "minecraft:waxed_copper_block": "#d87f33",
+    "minecraft:waxed_copper_bulb": "#d87f33",
+    "minecraft:waxed_copper_grate": "#d87f33",
+    "minecraft:waxed_cut_copper": "#d87f33",
+    "minecraft:waxed_exposed_copper": "#876b62",
+    "minecraft:waxed_exposed_copper_bulb": "#876b62",
+    "minecraft:waxed_exposed_cut_copper": "#876b62",
+    "minecraft:waxed_oxidized_chiseled_copper": "#167e86",
+    "minecraft:waxed_oxidized_copper": "#167e86",
+    "minecraft:waxed_oxidized_copper_bulb": "#167e86",
+    "minecraft:waxed_oxidized_copper_grate": "#167e86",
+    "minecraft:waxed_oxidized_cut_copper": "#167e86",
+    "minecraft:waxed_weathered_chiseled_copper": "#3a8e8c",
+    "minecraft:waxed_weathered_copper": "#3a8e8c",
+    "minecraft:waxed_weathered_copper_bulb": "#3a8e8c",
+    "minecraft:waxed_weathered_copper_grate": "#3a8e8c",
+    "minecraft:waxed_weathered_cut_copper": "#3a8e8c",
+    "minecraft:wet_sponge": "#e5e533",
+}
+
 # ref 命名 -> 基岩版实际方块 ID（camelCase 等差异）
 _REF_ID_RENAMES = {
     "minecraft:sea_lantern": "minecraft:seaLantern",
@@ -555,16 +619,22 @@ def build_table_from_ref(ref: Dict[str, str]) -> Dict[str, object]:
         if old_id in colors:
             colors[new_id] = colors.pop(old_id)
     colors.update(_REF_FIXES)
+    colors.update(_PIXELART_FIXES)
+    colors.update(_PIXELART_ADDITIONS)
     dye_overrides: Dict[str, str] = {}
     for name in _DYE_ORDER:
         value = ref.get(f"minecraft:{name}_wool")
         if value:
             dye_overrides[_DYE_STATE_NAMES.get(name, name)] = value
+    # 三源裁决：purple 系以 wiki/mcpixelart 为准（#7f3fb2），ref 的 #995acd 不采纳
+    dye_overrides["purple"] = "#7f3fb2"
     wood_overrides: Dict[str, str] = {}
     for name in sorted(_WOOD_WORDS):
         value = ref.get(f"minecraft:{name}_planks")
         if value:
             wood_overrides[name] = value
+    # ref 表较旧，pale_oak 由 mcpixelart 数据补充
+    wood_overrides.setdefault("pale_oak", "#fffcf5")
     terracotta: Dict[str, str] = {}
     for name in _DYE_ORDER:
         value = ref.get(f"minecraft:{name}_terracotta")
@@ -657,7 +727,7 @@ def main(argv=None) -> int:
         ref = _parse_ref_html(args.from_ref)
         table = build_table_from_ref(ref)
         table["meta"] = {
-            "source": "comeixalpha.github.io/ref/mapcolors/ (基岩版地图基色表) + wiki 交叉修正",
+            "source": "comeixalpha.github.io/ref/mapcolors/ + mcpixelart.com + Minecraft Wiki 三源交叉",
             "input_file": os.path.basename(args.from_ref),
             "generated": datetime.date.today().isoformat(),
             "block_count": len(table["colors"]),
