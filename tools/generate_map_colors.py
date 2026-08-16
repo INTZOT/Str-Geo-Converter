@@ -509,21 +509,37 @@ _DYE_ORDER = [
 # ref 表格命名 -> 基岩版 color state 值
 _DYE_STATE_NAMES = {"light_gray": "silver"}
 
-# ref 表中缺失/错误的值（来自 wiki 交叉验证后的人工修正）
+# ref 表中缺失/错误的值（wiki 交叉验证后的人工修正）
 _REF_FIXES = {
-    "minecraft:tube_coral": "#334cb2",
-    "minecraft:brain_coral": "#f27fa5",
-    "minecraft:bubble_coral": "#7f3fb2",
-    "minecraft:fire_coral": "#993333",
-    "minecraft:horn_coral": "#e5e533",
     "minecraft:redstone_lamp": "#9f5224",
     "minecraft:pointed_dripstone": "#4c3223",
     "minecraft:pink_petals": "#007c00",
 }
 
+# 生物群系染色方块（Bedrock 地图按 tint 渲染，见 wiki Tints 章节）：
+# 统一以平原群系为准。平原 = 默认 tint（minecraft-data tints.json 中 plains 的
+# color=0），即 Java DefaultBiomeColors 经典值：
+#   grass #7cbd6b / foliage #77ab2f / water #3f76e4
+# 覆盖的方块：草方块、短草、蕨、珊瑚与珊瑚扇（grass tint）、树叶、藤蔓
+# （foliage tint）、水（water tint）。珊瑚因此与草同色（Bedrock 地图语义）。
+_PLAINS_TINT_FIXES = {
+    "minecraft:grass_block": "#7cbd6b",
+    "minecraft:short_grass": "#7cbd6b",
+    "minecraft:fern": "#7cbd6b",
+    "minecraft:tube_coral": "#7cbd6b",
+    "minecraft:brain_coral": "#7cbd6b",
+    "minecraft:bubble_coral": "#7cbd6b",
+    "minecraft:fire_coral": "#7cbd6b",
+    "minecraft:horn_coral": "#7cbd6b",
+    "minecraft:leaves": "#77ab2f",
+    "minecraft:vine": "#77ab2f",
+    "minecraft:water": "#3f76e4",
+}
+
 # 三源裁决修正（mcpixelart 纹理最亮色 + wiki 地图色 2:1 反对 ref 的条目）
+# 注：grass_block 不在此列——Bedrock 地图上草方块按生物群系染色（grass tint），
+# ref 的 #92bc58 即 Bedrock 默认草地色，语义上优于 Java 固定色 #7fb238。
 _PIXELART_FIXES = {
-    "minecraft:grass_block": "#7fb238",
     "minecraft:sculk": "#191919",
     "minecraft:sculk_vein": "#191919",
     "minecraft:sculk_catalyst": "#191919",
@@ -537,6 +553,9 @@ _PIXELART_FIXES = {
 
 # ref 缺失、由 mcpixelart 补充的 Bedrock 方块 ID（值取纹理最亮色档）
 _PIXELART_ADDITIONS = {
+    # 树苗：非 tint 方块，用 wiki PLANT 行值
+    "minecraft:sapling": "#007c00",
+    "minecraft:copper_block": "#d87f33",
     "minecraft:chiseled_quartz_block": "#fffcf5",
     "minecraft:chiseled_red_sandstone": "#d87f33",
     "minecraft:chiseled_resin_bricks": "#9f5224",
@@ -621,6 +640,7 @@ def build_table_from_ref(ref: Dict[str, str]) -> Dict[str, object]:
     colors.update(_REF_FIXES)
     colors.update(_PIXELART_FIXES)
     colors.update(_PIXELART_ADDITIONS)
+    colors.update(_PLAINS_TINT_FIXES)
     dye_overrides: Dict[str, str] = {}
     for name in _DYE_ORDER:
         value = ref.get(f"minecraft:{name}_wool")

@@ -203,7 +203,9 @@ python mc_geo_converter.py to-geo 输入.mcstructure -o 输出.geo.json --map-co
 - 默认开启 Minecraft 风**面着色**：顶面亮、侧面中、底面暗（`--no-texture-shade` 关闭）；
 - 内置颜色表以[基岩版地图基色表](https://comeixalpha.github.io/ref/mapcolors/)（770 个方块 ID）为底，经 Minecraft Wiki 交叉校验修正，可用 `tools/generate_map_colors.py --from-ref/--from-wiki/--from-blocks` 重新生成；
 - 局限性：地图色是去饱和扁平色，适合预览/占位/骨架，不能替代真实纹理；
-  草、树叶等生物群系染色方块只有默认色调；自定义方块需自行提供颜色表。
+  草、短草、蕨、珊瑚、树叶、藤蔓、水在 Bedrock 地图上按生物群系染色，
+  表中统一采用**平原群系**（默认）色：grass `#7cbd6b`、foliage `#77ab2f`、water `#3f76e4`；
+  自定义方块需自行提供颜色表。
 
 ---
 

@@ -24,6 +24,14 @@
   - 三源裁决修正 10 项：紫系改回 `#7f3fb2`、草方块 `#7fb238`、sculk 系 `#191919`、
     磁石 `#a7a7a7`、标靶 `#fffcf5`、去皮金合欢木 `#d87f33`；
   - pale_oak 木板色定为 `#fffcf5`。
+- 依据 wiki [Color table / Tints 章节](https://minecraft.wiki/w/Map_item_format#Color_table)
+  修正生物群系染色语义：
+  - 确认 256 色表 = 基础色 × 4 亮度档，本项目采用 ×255 档（与基岩版 map_color 一致）；
+  - 生物群系染色方块（草方块/短草/蕨/珊瑚/树叶/藤蔓/水）统一以**平原群系**为准
+    （minecraft-data tints.json 确认平原 color=0 即默认色）：
+    grass `#7cbd6b`、foliage `#77ab2f`、water `#3f76e4`（Java DefaultBiomeColors 经典值）；
+  - 珊瑚按 grass tint 与草同色（Bedrock 地图语义）；
+  - 补回树叶/树苗与铜块；基表达 819 项。
 
 ## [1.1.0] - 2026-08-17
 
