@@ -57,6 +57,7 @@ class ConverterApp:
         self.s2g_scale = tk.StringVar(value="1")
         self.s2g_secondary = tk.BooleanVar(value=False)
         self.s2g_origin = tk.BooleanVar(value=False)
+        self.s2g_map_color = tk.BooleanVar(value=False)
 
         self._file_row(frame, 0, "输入结构", self.s2g_input, self._pick_mcstructure_input)
         self._output_row(
@@ -77,6 +78,7 @@ class ConverterApp:
         ttk.Entry(options, textvariable=self.s2g_scale, width=7).pack(side="left", padx=(4, 12))
         ttk.Checkbutton(options, text="包含副层(含水)", variable=self.s2g_secondary).pack(side="left")
         ttk.Checkbutton(options, text="写入世界原点", variable=self.s2g_origin).pack(side="left", padx=(8, 0))
+        ttk.Checkbutton(options, text="生成 map-color 贴图", variable=self.s2g_map_color).pack(side="left", padx=(8, 0))
 
         ttk.Button(frame, text="转换", command=lambda: self._start_job(self._job_structure_to_geo)).grid(
             row=4, column=3, sticky="e", pady=(8, 0)
@@ -286,6 +288,20 @@ class ConverterApp:
             yield "警告: " + warning
 
         stem = Path(src).stem
+        texture = None
+        if self.s2g_map_color.get():
+            table = m.load_map_colors(None)
+            groups = m._group_structure_blocks(data, False, self.s2g_secondary.get())
+            if not groups:
+                raise ValueError("结构中没有可转换的方块，无法生成 map-color 贴图")
+            texture = m.build_map_color_texture(
+                groups, table, Path(dst).with_suffix("").with_suffix("").name,
+                tile_size=16, shade=True,
+            )
+            png_path = m._without_geo_extension(dst) + ".png"
+            m.write_png(png_path, texture)
+            yield f"已写出: {png_path}"
+            yield f"贴图图集: {texture.atlas_width}x{texture.atlas_height}  色块: {len(texture.tiles)}"
         geometry = m.structure_to_geometry(
             data,
             identifier=self.s2g_identifier.get().strip(),
@@ -293,6 +309,7 @@ class ConverterApp:
             include_secondary=self.s2g_secondary.get(),
             include_origin=self.s2g_origin.get(),
             scale=scale,
+            texture=texture,
         )
         with open(dst, "w", encoding="utf-8") as fileobj:
             json.dump(geometry, fileobj, ensure_ascii=False, indent=2)

@@ -3,10 +3,12 @@
 
 import json
 import os
+import struct
 import subprocess
 import sys
 import tempfile
 import unittest
+import zlib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -413,6 +415,139 @@ class GuiOutputPathTests(unittest.TestCase):
             gui.ConverterApp._resolve_output(source, "D:/out/custom.mcstructure", ".mcstructure"),
             "D:/out/custom.mcstructure",
         )
+
+
+class MapColorTextureTests(unittest.TestCase):
+    """map-color 贴图：颜色查表、图集规划、PNG 写出与 CLI 端到端。"""
+
+    def _small_table(self):
+        return {
+            "colors": {
+                "minecraft:stone": "#7f7f7f",
+                "minecraft:dirt": "#866043",
+                "minecraft:water": "#3f76e4",
+            },
+            "state_overrides": {"color": {"red": "#a12722", "blue": "#35399d"}},
+        }
+
+    def test_color_lookup_base_override_and_fallback(self):
+        table = self._small_table()
+        rgb, found = m.map_color_for(m.BlockRef("minecraft:stone"), table)
+        self.assertTrue(found)
+        self.assertEqual(rgb, (0x7F, 0x7F, 0x7F))
+        rgb, found = m.map_color_for(
+            m.BlockRef("minecraft:wool", (("color", m.BlockState("string", "red")),)),
+            table,
+        )
+        self.assertTrue(found)
+        self.assertEqual(rgb, (0xA1, 0x27, 0x22))
+        rgb, found = m.map_color_for(m.BlockRef("minecraft:unknown_block"), table)
+        self.assertFalse(found)
+        self.assertEqual(rgb, m.DEFAULT_MAP_COLOR)
+
+    def test_atlas_layout_and_uv_bounds(self):
+        table = self._small_table()
+        groups = [
+            ((0, m.BlockRef("minecraft:stone")), [(0, 0, 0)]),
+            ((0, m.BlockRef("minecraft:dirt")), [(1, 0, 0)]),
+        ]
+        texture = m.build_map_color_texture(groups, table, "house", tile_size=16, shade=True)
+        self.assertEqual(len(texture.tiles), 6)
+        # 图集两维都必须是 2 的幂，且面积足够容纳全部色块
+        self.assertEqual(texture.atlas_width & (texture.atlas_width - 1), 0)
+        self.assertEqual(texture.atlas_height & (texture.atlas_height - 1), 0)
+        self.assertGreaterEqual(
+            texture.atlas_width * texture.atlas_height,
+            len(texture.tiles) * texture.tile_size * texture.tile_size,
+        )
+        self.assertGreaterEqual(texture.atlas_width, 32)
+        faces = texture.bone_faces["minecraft:stone"]
+        self.assertEqual(set(faces), set(m.UV_FACE_ORDER))
+        for face, (u, v) in faces.items():
+            self.assertLessEqual(u + texture.tile_size, texture.atlas_width)
+            self.assertLessEqual(v + texture.tile_size, texture.atlas_height)
+        tile_by_uv = {(u, v): rgb for u, v, rgb in texture.tiles}
+        up_rgb = tile_by_uv[faces["up"]]
+        down_rgb = tile_by_uv[faces["down"]]
+        self.assertGreater(sum(up_rgb), sum(down_rgb))
+
+    def test_flat_no_shade_single_tile_per_bone(self):
+        table = self._small_table()
+        groups = [((0, m.BlockRef("minecraft:stone")), [(0, 0, 0)])]
+        texture = m.build_map_color_texture(groups, table, "flat", tile_size=16, shade=False)
+        self.assertEqual(len(texture.tiles), 1)
+        for face, (u, v) in texture.bone_faces["minecraft:stone"].items():
+            self.assertEqual((u, v), (0, 0))
+
+    def test_png_writer_produces_valid_png(self):
+        table = self._small_table()
+        groups = [((0, m.BlockRef("minecraft:stone")), [(0, 0, 0)])]
+        texture = m.build_map_color_texture(groups, table, "stone", tile_size=8, shade=True)
+        with tempfile.TemporaryDirectory() as tmp:
+            png_path = os.path.join(tmp, "stone.png")
+            m.write_png(png_path, texture)
+            with open(png_path, "rb") as fileobj:
+                raw = fileobj.read()
+        self.assertTrue(raw.startswith(b"\x89PNG\r\n\x1a\n"))
+        width, height = struct.unpack(">II", raw[16:24])
+        self.assertEqual((width, height), (texture.atlas_width, texture.atlas_height))
+        idat = raw.find(b"IDAT")
+        length = struct.unpack(">I", raw[idat - 4 : idat])[0]
+        pixels = zlib.decompress(raw[idat + 4 : idat + 4 + length])
+        # first scanline: filter byte 0, then RGB of the bright tile at (0,0)
+        self.assertEqual(pixels[0], 0)
+        self.assertEqual(tuple(pixels[1:4]), (0x7F, 0x7F, 0x7F))
+
+    def test_invalid_tile_size_rejected(self):
+        groups = [((0, m.BlockRef("minecraft:stone")), [(0, 0, 0)])]
+        with self.assertRaises(m.ConverterError):
+            m.build_map_color_texture(groups, self._small_table(), "bad", tile_size=12)
+
+    def test_cli_map_color_texture_end_to_end(self):
+        sample = ROOT / "samples" / "dirt_house.mcstructure"
+        if not sample.exists():
+            self.skipTest("sample not present")
+        with tempfile.TemporaryDirectory() as tmp:
+            geo_path = os.path.join(tmp, "dirt_house.geo.json")
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "mc_geo_converter.py"),
+                    "to-geo",
+                    str(sample),
+                    "-o",
+                    geo_path,
+                    "--map-color-texture",
+                ],
+                cwd=str(ROOT),
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            png_path = geo_path[: -len(".geo.json")] + ".png"
+            self.assertTrue(os.path.exists(png_path))
+            geometry = m.load_geometry(geo_path)[0]
+            description = geometry["description"]
+            self.assertEqual(description["textures"], ["dirt_house"])
+            with open(png_path, "rb") as fileobj:
+                png = fileobj.read()
+            png_width, png_height = struct.unpack(">II", png[16:24])
+            self.assertEqual(description["texture_width"], png_width)
+            self.assertEqual(description["texture_height"], png_height)
+            for bone in geometry["bones"]:
+                for cube in bone["cubes"]:
+                    uv = cube["uv"]
+                    self.assertIsInstance(uv, dict)
+                    self.assertEqual(set(uv), set(m.UV_FACE_ORDER))
+            # 带贴图的几何仍可无损转回结构
+            original = m.parse_mcstructure(str(sample))
+            back = m.geometry_to_structure(
+                geometry,
+                m.parse_block_ref("minecraft:stone"),
+                block_version=original.palette[0].version,
+            )
+            self.assertEqual(non_air_occupancy(back), non_air_occupancy(original))
 
 
 if __name__ == "__main__":

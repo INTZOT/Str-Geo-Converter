@@ -8,6 +8,14 @@
 ## [Unreleased]
 
 - 项目以 [MIT 许可证](LICENSE) 开源（Copyright © 2026 INTZOT）。
+- `to-geo` 新增 `--map-color-texture`：按方块地图色自动生成色块贴图图集
+  （`.png` + per-face UV），内置 `data/map_colors.json` 颜色表
+  （505 个方块基色 + 16 染料 + 11 木材 state 覆盖），支持 Minecraft 风面着色；
+  GUI 同步增加「生成 map-color 贴图」开关。
+- 颜色表数据来源：Minecraft Wiki「Map item format」Base colors 表
+  （RGB 值即地图渲染色，与基岩版 blocks.json 的 map_color 一致），
+  可由 `tools/generate_map_colors.py --from-wiki` 重新生成；
+  也支持 `--from-blocks` 模式从 vanilla 行为包 blocks.json 生成。
 
 ## [1.1.0] - 2026-08-17
 

@@ -14,6 +14,8 @@ Str-Geo-Converter/
 ├─ tests/test_converter.py    # unittest 自检测试（无 pytest 依赖）
 ├─ examples/                  # 示例几何模型与其生成的结构文件
 ├─ samples/                   # 游戏真实导出的 .mcstructure 样例
+├─ data/map_colors.json       # 方块地图色表（map-color 贴图功能）
+├─ tools/generate_map_colors.py  # 从 vanilla blocks.json 重新生成颜色表
 └─ *.bat                      # Windows 快捷入口
 ```
 
@@ -72,8 +74,10 @@ short `key=3s`、long `key=3L`。这是"几何 → 结构 → 几何"往返无�
 ```
 parse_mcstructure(path)           # 读小端 NBT，展平为 StructureData
         │
-structure_to_geometry(data, ...)  # 按 (layer, BlockRef) 分组方块 → 骨骼
-        │                         # 每方块 → 1×1×1 cube（--scale 时等比放大）
+_group_structure_blocks(data,...) # 按 (layer, BlockRef) 分组（骨骼的唯一定义来源）
+        │
+structure_to_geometry(data, ...)  # 分组 → 骨骼；每方块 → 1×1×1 cube（--scale 等比放大）
+        │                         # 可选 texture（MapColorTexture）→ cube 写 per-face UV
         ▼
 Bedrock geometry JSON dict        # bones/description/visible_bounds
 ```
@@ -87,6 +91,29 @@ Bedrock geometry JSON dict        # bones/description/visible_bounds
 - `--include-secondary` 将副层方块写成 `secondary:` 前缀骨骼；
 - `--include-origin` 把 `structure_world_origin` 写入 description 附加字段；
 - 实体、方块实体数据无法表达，跳过并收集进 `warnings` 由 CLI 打印。
+
+### 3.1 map-color 贴图（可选）
+
+`to-geo --map-color-texture` 利用方块地图色（`data/map_colors.json`，源自 vanilla
+行为包 `blocks.json` 的 `map_color` 字段）为模型自动生成纯色贴图：
+
+```
+_group_structure_blocks 的分组结果
+        │
+map_color_for(ref, table)         # state 覆盖（color/wood_type）> ID 基色 > 默认灰
+        ▼
+build_map_color_texture(groups)   # 每骨骼 3 个色块（亮/侧/暗）→ 2 的幂尺寸图集
+        │
+write_png(path, texture)          # 纯标准库 PNG 编码器（zlib+struct，无 Pillow）
+        ▼
+structure_to_geometry(texture=)   # cube 写 per-face UV；description 写 textures + 图集尺寸
+```
+
+颜色查表优先级：`state_overrides`（如羊毛 `color="red"` → 红色、木头 `wood_type`）
+> 方块 ID 基色 > 默认灰 `DEFAULT_MAP_COLOR`。内置覆盖表（`DYE_COLORS` /
+`WOOD_COLORS`）是兜底，表内同名字段优先；自定义表经 `--map-colors FILE` 传入，
+格式与 `data/map_colors.json` 一致（`tools/generate_map_colors.py` 可从 vanilla
+`blocks.json` 重新生成）。
 
 ## 4. 管线二：`.geo.json` → `.mcstructure`（几何转结构）
 

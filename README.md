@@ -18,6 +18,8 @@ Str-Geo-Converter/
 ├─ CHANGELOG.md               # 版本历史
 ├─ docs/ARCHITECTURE.md       # 内部架构与数据流说明
 ├─ LICENSE                    # MIT 许可证
+├─ data/map_colors.json       # 方块地图色表（--map-color-texture 用）
+├─ tools/generate_map_colors.py  # 从 vanilla blocks.json 重新生成颜色表
 ├─ examples/
 │  ├─ house.geo.json          # 示例几何模型（小房子）
 │  └─ house.mcstructure       # 由 house.geo.json 生成的结构文件
@@ -164,6 +166,10 @@ secondary:minecraft:water[liquid_depth=0]
 | `--include-air` | 关 | 把空气方块也转换成 cube（不推荐） |
 | `--include-secondary` | 关 | 转换副层方块 |
 | `--include-origin` | 关 | 把结构世界原点写入 description 附加字段 |
+| `--map-color-texture` | 关 | 按方块地图色自动生成 `.png` 色块贴图并写入 per-face UV（见下文） |
+| `--map-colors` | 内置表 | 自定义 map 颜色表 JSON（格式见 `data/map_colors.json`） |
+| `--texture-size` | `16` | 贴图单个色块边长（须为 2 的幂） |
+| `--no-texture-shade` | 关 | 关闭 Minecraft 风面着色（顶亮/侧中/底暗） |
 
 ### `to-structure`（几何 → 结构）
 
@@ -176,6 +182,29 @@ secondary:minecraft:water[liquid_depth=0]
 | `--world-origin` | `0,0,0` | `structure_world_origin`，如 `100,64,-100` |
 | `--snap` | `floor` | 非整数坐标体素化：`floor` 或 `round` |
 | `--voxel-size` | `1` | 几何中一个方块对应的长度单位；若几何由 `to-geo --scale N` 生成，填 `N` 可精确还原 |
+
+---
+
+## 自动生成 map-color 贴图
+
+Minecraft 中每个方块在地图上都有对应的显示色（基岩版数据源为 vanilla 行为包
+`blocks.json` 的 `map_color` 字段）。利用这一点，`to-geo` 可以为模型**自动生成
+一套纯色贴图**：每个骨骼对应一个色块，图集按 2 的幂尺寸排布，每个 cube 的面
+UV 指向自己骨骼的色块区域，模型立刻可见、可区分。
+
+```bat
+python mc_geo_converter.py to-geo 输入.mcstructure -o 输出.geo.json --map-color-texture
+```
+
+会同时生成 `输出.png`（图集）与 `输出.geo.json`（`description.textures` 引用同名
+贴图 + per-face UV），Blockbench 打开即可看到带色模型。
+
+- 颜色查表优先级：`state_overrides`（如 `color="red"` 羊毛 → 红色）> 方块 ID 基色
+  > 默认灰色（`--map-colors` 可提供自定义表，例如行为包方块）；
+- 默认开启 Minecraft 风**面着色**：顶面亮、侧面中、底面暗（`--no-texture-shade` 关闭）；
+- 内置颜色表来自 vanilla 行为包，可用 `tools/generate_map_colors.py` 重新生成；
+- 局限性：地图色是去饱和扁平色，适合预览/占位/骨架，不能替代真实纹理；
+  草、树叶等生物群系染色方块只有默认色调；自定义方块需自行提供颜色表。
 
 ---
 

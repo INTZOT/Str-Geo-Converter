@@ -35,7 +35,9 @@ import json
 import math
 import os
 import re
+import struct
 import sys
+import zlib
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
@@ -671,6 +673,269 @@ def _validate_scale(scale: Any) -> float:
     return value
 
 
+# ---------------------------------------------------------------------------
+# Map-color textures (structure -> geometry)
+# ---------------------------------------------------------------------------
+
+DEFAULT_MAP_COLOR = (128, 128, 128)
+# Minecraft-style per-face brightness: up is brightest, down darkest.
+MAP_COLOR_FACE_SHADE = {"up": 1.0, "down": 0.6, "north": 0.8, "south": 0.8, "east": 0.8, "west": 0.8}
+MAP_COLOR_FACE_VARIANT = {"up": 0, "north": 1, "south": 1, "east": 1, "west": 1, "down": 2}
+UV_FACE_ORDER = ("north", "south", "east", "west", "up", "down")
+
+# Curated state overrides: Bedrock keeps e.g. all wools under one block id with a
+# ``color`` state, so blocks.json alone cannot distinguish their map colors.
+# Values follow the standard 16-dye map palette.
+DYE_COLORS = {
+    "white": (233, 236, 236),
+    "orange": (240, 118, 19),
+    "magenta": (189, 68, 179),
+    "light_blue": (58, 175, 217),
+    "yellow": (248, 198, 39),
+    "lime": (112, 185, 25),
+    "pink": (237, 141, 172),
+    "gray": (62, 68, 71),
+    "silver": (142, 142, 134),
+    "cyan": (21, 137, 145),
+    "purple": (121, 42, 172),
+    "blue": (53, 57, 157),
+    "brown": (114, 71, 40),
+    "green": (84, 109, 27),
+    "red": (161, 39, 34),
+    "black": (20, 21, 25),
+}
+WOOD_COLORS = {
+    "oak": (107, 107, 74),
+    "spruce": (107, 85, 56),
+    "birch": (214, 210, 157),
+    "jungle": (119, 102, 51),
+    "acacia": (158, 78, 35),
+    "dark_oak": (79, 50, 24),
+    "mangrove": (112, 70, 43),
+    "cherry": (228, 181, 194),
+    "pale_oak": (232, 229, 215),
+    "crimson": (122, 42, 35),
+    "warped": (46, 110, 93),
+}
+
+
+def _group_structure_blocks(
+    data: StructureData,
+    include_air: bool,
+    include_secondary: bool,
+) -> List[Tuple[int, BlockRef, List[Tuple[int, int, int]]]]:
+    """Group structure cells by (layer, block ref), sorted like geometry bones."""
+    layers = [(0, data.primary)]
+    if include_secondary:
+        layers.append((1, data.secondary))
+    elif data.secondary:
+        data.warnings.append(
+            f"副层中有 {len(data.secondary)} 个方块未转换（如需包含请使用 --include-secondary）"
+        )
+    groups: Dict[Tuple[int, BlockRef], List[Tuple[int, int, int]]] = {}
+    for layer_index, layer_cells in layers:
+        for position, palette_index in layer_cells.items():
+            ref = data.palette[palette_index]
+            if ref.name == "minecraft:air" and not include_air:
+                continue
+            groups.setdefault((layer_index, ref), []).append(position)
+    return sorted(
+        groups.items(), key=lambda item: (item[0][0], encode_block_ref(item[0][1]))
+    )
+
+
+def load_map_colors(path: Optional[str] = None) -> Dict[str, Any]:
+    """Load a map-color table (default: the bundled ``data/map_colors.json``)."""
+    if path is None:
+        path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "data", "map_colors.json"
+        )
+    try:
+        with open(path, encoding="utf-8") as fileobj:
+            table = json.load(fileobj)
+    except OSError as exc:
+        raise ConverterError(f"无法读取 map 颜色表: {path}（{exc}）")
+    except json.JSONDecodeError as exc:
+        raise ConverterError(f"map 颜色表不是合法 JSON: {path}（{exc}）")
+    if not isinstance(table, dict) or not isinstance(table.get("colors"), dict):
+        raise ConverterError(f"map 颜色表缺少 colors 字段: {path}")
+    return table
+
+
+def _parse_hex_color(text: Any) -> Tuple[int, int, int]:
+    raw = str(text).strip().lstrip("#")
+    if len(raw) != 6:
+        raise ConverterError(f"无效的颜色值: {text!r}（应为 #RRGGBB）")
+    try:
+        return (int(raw[0:2], 16), int(raw[2:4], 16), int(raw[4:6], 16))
+    except ValueError:
+        raise ConverterError(f"无效的颜色值: {text!r}（应为 #RRGGBB）")
+
+
+def _normalize_color(value: Any) -> Tuple[int, int, int]:
+    if isinstance(value, (tuple, list)) and len(value) == 3:
+        try:
+            return tuple(int(channel) for channel in value)  # type: ignore[return-value]
+        except (TypeError, ValueError):
+            pass
+    return _parse_hex_color(value)
+
+
+# Built-in fallbacks used when a table has no matching state override.
+_BUILTIN_STATE_OVERRIDES = {"color": DYE_COLORS, "wood_type": WOOD_COLORS}
+
+# wood_type 覆盖只作用于这些"木材家族"方块（树叶等有自己的叶绿色，不能套木头色）
+_WOOD_FAMILY_BLOCKS = frozenset(
+    {
+        "minecraft:planks",
+        "minecraft:log",
+        "minecraft:wood",
+        "minecraft:fence",
+        "minecraft:fence_gate",
+        "minecraft:stripped_oak_log",
+        "minecraft:stripped_spruce_log",
+        "minecraft:stripped_birch_log",
+        "minecraft:stripped_jungle_log",
+        "minecraft:stripped_acacia_log",
+        "minecraft:stripped_dark_oak_log",
+        "minecraft:stripped_mangrove_log",
+        "minecraft:stripped_cherry_log",
+        "minecraft:stripped_pale_oak_log",
+        "minecraft:stripped_crimson_stem",
+        "minecraft:stripped_warped_stem",
+    }
+)
+
+
+def map_color_for(ref: BlockRef, table: Dict[str, Any]) -> Tuple[Tuple[int, int, int], bool]:
+    """Look up a block's map color; returns ``(rgb, found_in_table)``."""
+    overrides: Dict[str, Dict[str, Any]] = {
+        key: dict(bucket) for key, bucket in _BUILTIN_STATE_OVERRIDES.items()
+    }
+    for key, bucket in (table.get("state_overrides") or {}).items():
+        if isinstance(bucket, dict):
+            overrides[key] = {**overrides.get(key, {}), **bucket}
+    for key, state in ref.states:
+        if key == "wood_type" and ref.name not in _WOOD_FAMILY_BLOCKS:
+            continue
+        bucket = overrides.get(key)
+        if bucket:
+            color = bucket.get(str(state.value))
+            if color is not None:
+                return _normalize_color(color), True
+    base = table.get("colors", {}).get(ref.name)
+    if base is not None:
+        return _normalize_color(base), True
+    return DEFAULT_MAP_COLOR, False
+
+
+def _next_pow2(value: int) -> int:
+    return 1 << (value - 1).bit_length()
+
+
+@dataclass
+class MapColorTexture:
+    """A planned solid-color atlas: bone name -> per-face UV origin."""
+
+    name: str
+    tile_size: int
+    atlas_width: int
+    atlas_height: int
+    tiles: List[Tuple[int, int, Tuple[int, int, int]]]  # (u, v, rgb)
+    bone_faces: Dict[str, Dict[str, Tuple[int, int]]]  # bone -> face -> (u, v)
+
+
+def build_map_color_texture(
+    ordered_groups: Sequence[Tuple[Tuple[int, BlockRef], Sequence[Tuple[int, int, int]]]],
+    table: Dict[str, Any],
+    name: str,
+    tile_size: int = 16,
+    shade: bool = True,
+) -> MapColorTexture:
+    """Plan a map-color atlas for the given (sorted) bone groups."""
+    if tile_size <= 0 or (tile_size & (tile_size - 1)) != 0:
+        raise ConverterError(f"贴图色块边长必须是 2 的幂: {tile_size}")
+    variants = 3 if shade else 1
+    tile_count = len(ordered_groups) * variants
+    if tile_count == 0:
+        raise ConverterError("没有可生成贴图的方块（结构为空？）")
+    cols = _next_pow2(max(1, math.ceil(math.sqrt(tile_count))))
+    rows = _next_pow2(math.ceil(tile_count / cols))
+    atlas_width = cols * tile_size
+    atlas_height = rows * tile_size
+
+    tiles: List[Tuple[int, int, Tuple[int, int, int]]] = []
+    bone_faces: Dict[str, Dict[str, Tuple[int, int]]] = {}
+    tile_index = 0
+    for (layer_index, ref), _positions in ordered_groups:
+        bone_name = encode_block_ref(ref, layer_index)
+        color, _found = map_color_for(ref, table)
+        factors = (1.0, 0.8, 0.6) if shade else (1.0,)
+        bone_tile_uvs: List[Tuple[int, int]] = []
+        for factor in factors:
+            rgb = tuple(min(255, max(0, round(channel * factor))) for channel in color)
+            u = (tile_index % cols) * tile_size
+            v = (tile_index // cols) * tile_size
+            tiles.append((u, v, rgb))  # type: ignore[arg-type]
+            bone_tile_uvs.append((u, v))
+            tile_index += 1
+        if shade:
+            face_uv = {
+                face: bone_tile_uvs[MAP_COLOR_FACE_VARIANT[face]]
+                for face in UV_FACE_ORDER
+            }
+        else:
+            face_uv = {face: bone_tile_uvs[0] for face in UV_FACE_ORDER}
+        bone_faces[bone_name] = face_uv
+
+    return MapColorTexture(name, tile_size, atlas_width, atlas_height, tiles, bone_faces)
+
+
+def write_png(path: str, texture: MapColorTexture) -> None:
+    """Write the atlas as a minimal PNG (pure standard library, no Pillow)."""
+    width, height = texture.atlas_width, texture.atlas_height
+    pixels = [[(0, 0, 0) for _ in range(width)] for _ in range(height)]
+    for u, v, rgb in texture.tiles:
+        for dy in range(texture.tile_size):
+            for dx in range(texture.tile_size):
+                pixels[v + dy][u + dx] = rgb
+    raw = bytearray()
+    for row in pixels:
+        raw.append(0)  # filter type: none
+        for r, g, b in row:
+            raw += bytes((r, g, b))
+
+    def chunk(tag: bytes, data: bytes) -> bytes:
+        return (
+            struct.pack(">I", len(data))
+            + tag
+            + data
+            + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+        )
+
+    png = (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+        + chunk(b"IDAT", zlib.compress(bytes(raw), 9))
+        + chunk(b"IEND", b"")
+    )
+    with open(path, "wb") as fileobj:
+        fileobj.write(png)
+
+
+def _cube_uv(bone_name: str, texture: Optional[MapColorTexture]) -> Any:
+    """Per-cube ``uv`` value: the legacy ``[0, 0]`` or per-face UV rects."""
+    if texture is None:
+        return [0, 0]
+    faces = texture.bone_faces.get(bone_name)
+    if faces is None:
+        return [0, 0]
+    return {
+        face: {"uv": list(faces[face]), "uv_size": [texture.tile_size, texture.tile_size]}
+        for face in UV_FACE_ORDER
+    }
+
+
 def structure_to_geometry(
     data: StructureData,
     identifier: str = "",
@@ -682,6 +947,7 @@ def structure_to_geometry(
     include_secondary: bool = False,
     include_origin: bool = False,
     scale: Any = 1.0,
+    texture: Optional[MapColorTexture] = None,
 ) -> Dict[str, Any]:
     """
     Convert parsed structure data into a Bedrock geometry JSON object.
@@ -697,25 +963,8 @@ def structure_to_geometry(
         return _tidy_number(value * scale)
 
     sx, sy, sz = data.size
-    groups: Dict[Tuple[int, BlockRef], List[Tuple[int, int, int]]] = {}
-
-    layers = [(0, data.primary)]
-    if include_secondary:
-        layers.append((1, data.secondary))
-    elif data.secondary:
-        data.warnings.append(
-            f"副层中有 {len(data.secondary)} 个方块未转换（如需包含请使用 --include-secondary）"
-        )
-
-    for layer_index, layer_cells in layers:
-        for position, palette_index in layer_cells.items():
-            ref = data.palette[palette_index]
-            if ref.name == "minecraft:air" and not include_air:
-                continue
-            groups.setdefault((layer_index, ref), []).append(position)
-
     bones: List[Dict[str, Any]] = []
-    ordered_groups = sorted(groups.items(), key=lambda item: (item[0][0], encode_block_ref(item[0][1])))
+    ordered_groups = _group_structure_blocks(data, include_air, include_secondary)
     for (layer_index, ref), positions in ordered_groups:
         positions = sorted(positions, key=lambda p: (p[0], p[1], p[2]))
         min_x = min(p[0] for p in positions)
@@ -724,9 +973,10 @@ def structure_to_geometry(
         max_x = max(p[0] for p in positions)
         max_y = max(p[1] for p in positions)
         max_z = max(p[2] for p in positions)
+        bone_name = encode_block_ref(ref, layer_index)
         bones.append(
             {
-                "name": encode_block_ref(ref, layer_index),
+                "name": bone_name,
                 "pivot": [
                     scaled((min_x + max_x) / 2.0),
                     scaled((min_y + max_y) / 2.0),
@@ -736,7 +986,7 @@ def structure_to_geometry(
                     {
                         "origin": [scaled(x), scaled(y), scaled(z)],
                         "size": [scaled(1), scaled(1), scaled(1)],
-                        "uv": [0, 0],
+                        "uv": _cube_uv(bone_name, texture),
                     }
                     for x, y, z in positions
                 ],
@@ -751,6 +1001,10 @@ def structure_to_geometry(
         "visible_bounds_height": scaled(sy),
         "visible_bounds_offset": [0, 0, 0],
     }
+    if texture is not None:
+        description["textures"] = [texture.name]
+        description["texture_width"] = texture.atlas_width
+        description["texture_height"] = texture.atlas_height
     if include_origin:
         description["structure_world_origin"] = list(data.world_origin)
         description["structure_size"] = list(data.size)
@@ -1043,6 +1297,23 @@ def _positive_scale(text: str) -> float:
     return value
 
 
+def _positive_pow2(text: str) -> int:
+    try:
+        value = int(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError("必须是 2 的幂整数，例如 8、16、32")
+    if value <= 0 or (value & (value - 1)) != 0:
+        raise argparse.ArgumentTypeError("必须是 2 的幂整数，例如 8、16、32")
+    return value
+
+
+def _without_geo_extension(path: str) -> str:
+    """去掉 .geo.json 后缀（splitext 只会拆最后的 .json）。"""
+    if path.lower().endswith(".geo.json"):
+        return path[: -len(".geo.json")]
+    return os.path.splitext(path)[0]
+
+
 def _default_output(input_path: str, direction: str) -> str:
     if direction == "to-geo":
         return os.path.splitext(input_path)[0] + ".geo.json"
@@ -1084,6 +1355,28 @@ def run_to_geo(args: argparse.Namespace) -> int:
     _print_warnings(data.warnings)
 
     stem = os.path.splitext(os.path.basename(input_path))[0]
+    texture = None
+    if args.map_color_texture:
+        table = load_map_colors(args.map_colors)
+        groups = _group_structure_blocks(data, args.include_air, args.include_secondary)
+        if not groups:
+            raise ConverterError("结构中没有可转换的方块，无法生成 map-color 贴图")
+        texture_name = os.path.basename(_without_geo_extension(output_path))
+        texture = build_map_color_texture(
+            groups,
+            table,
+            texture_name,
+            tile_size=args.texture_size,
+            shade=not args.no_texture_shade,
+        )
+        png_path = _without_geo_extension(output_path) + ".png"
+        write_png(png_path, texture)
+        print(f"已写出: {png_path}")
+        print(
+            f"  贴图图集: {texture.atlas_width}x{texture.atlas_height}  "
+            f"色块: {len(texture.tiles)}  "
+            f"明暗: {'开（顶亮底暗）' if texture.bone_faces else '关'}"
+        )
     geometry = structure_to_geometry(
         data,
         identifier=args.identifier,
@@ -1095,6 +1388,7 @@ def run_to_geo(args: argparse.Namespace) -> int:
         include_secondary=args.include_secondary,
         include_origin=args.include_origin,
         scale=args.scale,
+        texture=texture,
     )
     with open(output_path, "w", encoding="utf-8") as fileobj:
         json.dump(geometry, fileobj, ensure_ascii=False, indent=2)
@@ -1170,6 +1464,28 @@ def build_parser() -> argparse.ArgumentParser:
         default=1.0,
         metavar="N",
         help="等比缩放生成的几何体：体素 cube 尺寸变为 [N,N,N]，坐标与边界同步缩放（默认 1）",
+    )
+    to_geo.add_argument(
+        "--map-color-texture",
+        action="store_true",
+        help="为模型自动生成 map-color 色块贴图：按方块地图色生成 .png 图集并写入 per-face UV",
+    )
+    to_geo.add_argument(
+        "--map-colors",
+        metavar="FILE",
+        help="自定义 map 颜色表 JSON（默认使用内置 data/map_colors.json）",
+    )
+    to_geo.add_argument(
+        "--texture-size",
+        type=_positive_pow2,
+        default=16,
+        metavar="N",
+        help="贴图单个色块边长（默认 16，须为 2 的幂）",
+    )
+    to_geo.add_argument(
+        "--no-texture-shade",
+        action="store_true",
+        help="关闭 Minecraft 风面着色（默认开启：顶面亮、侧面中、底面暗）",
     )
     to_geo.set_defaults(func=run_to_geo)
 
