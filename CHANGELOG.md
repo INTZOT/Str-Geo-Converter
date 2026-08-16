@@ -39,6 +39,10 @@
   （如 `spruce_stairs` → 云杉木色、`iron_door`/`iron_bars` → 铁色、
   `quartz_stairs` → 石英色、`wooden_pressure_plate` → 橡木色），
   内置木材兜底色同步更新为交叉验证值（oak `#8f7748` 等）。
+- **相邻同种方块贪心合并**（默认开启）：`to-geo` 把 6 邻接的同种方块合并为
+  大长方体 cube（greedy meshing），大幅减少 cube 数量与 Blockbench 渲染压力
+  （实测 16384 格 → 1536 cube，-90.6%，毫秒级）；`--no-merge-voxels` 可关闭；
+  合并后转回结构无损；GUI 增加「合并相邻方块」开关。
 
 ## [1.1.0] - 2026-08-17
 

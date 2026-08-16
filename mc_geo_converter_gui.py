@@ -58,6 +58,7 @@ class ConverterApp:
         self.s2g_secondary = tk.BooleanVar(value=False)
         self.s2g_origin = tk.BooleanVar(value=False)
         self.s2g_map_color = tk.BooleanVar(value=False)
+        self.s2g_merge = tk.BooleanVar(value=True)
 
         self._file_row(frame, 0, "输入结构", self.s2g_input, self._pick_mcstructure_input)
         self._output_row(
@@ -79,6 +80,7 @@ class ConverterApp:
         ttk.Checkbutton(options, text="包含副层(含水)", variable=self.s2g_secondary).pack(side="left")
         ttk.Checkbutton(options, text="写入世界原点", variable=self.s2g_origin).pack(side="left", padx=(8, 0))
         ttk.Checkbutton(options, text="生成 map-color 贴图", variable=self.s2g_map_color).pack(side="left", padx=(8, 0))
+        ttk.Checkbutton(options, text="合并相邻方块", variable=self.s2g_merge).pack(side="left", padx=(8, 0))
 
         ttk.Button(frame, text="转换", command=lambda: self._start_job(self._job_structure_to_geo)).grid(
             row=4, column=3, sticky="e", pady=(8, 0)
@@ -309,6 +311,7 @@ class ConverterApp:
             include_secondary=self.s2g_secondary.get(),
             include_origin=self.s2g_origin.get(),
             scale=scale,
+            merge=self.s2g_merge.get(),
             texture=texture,
         )
         with open(dst, "w", encoding="utf-8") as fileobj:

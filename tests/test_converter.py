@@ -144,10 +144,9 @@ class GeometryFromStructureTests(unittest.TestCase):
         self.assertEqual(description["visible_bounds_width"], 4)
         self.assertEqual(description["visible_bounds_height"], 2)
         cubes = geo["minecraft:geometry"][0]["bones"][0]["cubes"]
+        self.assertEqual(len(cubes), 1)  # 相邻同种方块默认合并
         self.assertEqual(cubes[0]["origin"], [0, 0, 0])
-        self.assertEqual(cubes[1]["origin"], [2, 0, 0])
-        for cube in cubes:
-            self.assertEqual(cube["size"], [2, 2, 2])
+        self.assertEqual(cubes[0]["size"], [4, 2, 2])
         self.assertEqual(geo["minecraft:geometry"][0]["bones"][0]["pivot"], [1.0, 0.0, 0.0])
 
     def test_uniform_scale_fractional(self):
@@ -248,7 +247,9 @@ class FileRoundTripTests(unittest.TestCase):
             palette=[m.BlockRef("minecraft:stone")],
         )
         geo = m.structure_to_geometry(original, source_stem="scaled", scale=2)
-        self.assertEqual(geo["minecraft:geometry"][0]["bones"][0]["cubes"][0]["size"], [2, 2, 2])
+        cubes = geo["minecraft:geometry"][0]["bones"][0]["cubes"]
+        self.assertEqual(len(cubes), 1)  # 3 个相邻方块合并为 1 个
+        self.assertEqual(cubes[0]["size"], [6, 2, 2])
 
         geometry = geo["minecraft:geometry"][0]
         back = m.geometry_to_structure(
@@ -415,6 +416,59 @@ class GuiOutputPathTests(unittest.TestCase):
             gui.ConverterApp._resolve_output(source, "D:/out/custom.mcstructure", ".mcstructure"),
             "D:/out/custom.mcstructure",
         )
+
+
+class MergeVoxelTests(unittest.TestCase):
+    """相邻同种方块贪心合并为长方体。"""
+
+    def test_solid_cube_merges_to_single_cube(self):
+        stone = m.BlockRef("minecraft:stone")
+        data = m.StructureData(
+            size=(2, 2, 2),
+            primary={(x, y, z): 0 for x in range(2) for y in range(2) for z in range(2)},
+            secondary={},
+            palette=[stone],
+        )
+        geo = m.structure_to_geometry(data, source_stem="cube")
+        cubes = geo["minecraft:geometry"][0]["bones"][0]["cubes"]
+        self.assertEqual(len(cubes), 1)
+        self.assertEqual(cubes[0]["origin"], [0, 0, 0])
+        self.assertEqual(cubes[0]["size"], [2, 2, 2])
+
+    def test_l_shape_merges_to_two_cubes(self):
+        stone = m.BlockRef("minecraft:stone")
+        cells = {(x, 0, 0): 0 for x in range(3)}
+        cells.update({(0, 1, 0): 0, (0, 2, 0): 0})
+        data = m.StructureData(size=(3, 3, 1), primary=cells, secondary={}, palette=[stone])
+        geo = m.structure_to_geometry(data, source_stem="l")
+        cubes = geo["minecraft:geometry"][0]["bones"][0]["cubes"]
+        self.assertEqual(len(cubes), 2)
+        sizes = sorted(tuple(cube["size"]) for cube in cubes)
+        self.assertEqual(sizes, [(1, 3, 1), (2, 1, 1)])
+
+    def test_merge_can_be_disabled(self):
+        stone = m.BlockRef("minecraft:stone")
+        data = m.StructureData(
+            size=(2, 1, 1),
+            primary={(0, 0, 0): 0, (1, 0, 0): 0},
+            secondary={},
+            palette=[stone],
+        )
+        geo = m.structure_to_geometry(data, source_stem="x", merge=False)
+        cubes = geo["minecraft:geometry"][0]["bones"][0]["cubes"]
+        self.assertEqual(len(cubes), 2)
+        for cube in cubes:
+            self.assertEqual(cube["size"], [1, 1, 1])
+
+    def test_merged_geometry_roundtrips_losslessly(self):
+        stone = m.BlockRef("minecraft:stone")
+        cells = {(x, y, z): 0 for x in range(3) for y in range(2) for z in range(2)}
+        data = m.StructureData(size=(3, 2, 2), primary=cells, secondary={}, palette=[stone])
+        geo = m.structure_to_geometry(data, source_stem="big")
+        geometry = geo["minecraft:geometry"][0]
+        self.assertEqual(len(geometry["bones"][0]["cubes"]), 1)
+        back = m.geometry_to_structure(geometry, m.parse_block_ref("minecraft:stone"))
+        self.assertEqual(non_air_occupancy(back), non_air_occupancy(data))
 
 
 class MapColorTextureTests(unittest.TestCase):

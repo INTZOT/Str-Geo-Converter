@@ -108,12 +108,15 @@ python mc_geo_converter_gui.py
 
 | 结构中的内容 | 几何文件中的表示 |
 | --- | --- |
-| 主层中的每个非空气方块 | 一个 `1×1×1` 的 cube，`origin` = 方块在结构内的相对坐标；`--scale N` 时整体等比缩放为 `N×N×N`，坐标同步缩放 |
+| 主层中的每个非空气方块 | 默认合并为 cube：相邻同种方块贪心合并成一个大长方体（如 `2×2×2` 实心 → 1 个 `size=[2,2,2]` 的 cube），大幅减少 cube 数量与 Blockbench 渲染压力；`--no-merge-voxels` 可关闭（每个方块独立 1×1×1 cube）；`--scale N` 时整体等比缩放 |
 | 同一种方块（含相同 states） | 合并为一个骨骼（bone），骨骼名编码方块 ID 与 states |
 | 空气方块 | 默认跳过（`--include-air` 可保留） |
 | 副层（例如含水方块） | 默认跳过，`--include-secondary` 时转换为骨骼名带 `secondary:` 前缀的 cube |
 | 实体、箱子内容等方块实体数据 | 无法用几何表达，转换时跳过并在命令行提示 |
 | `structure_world_origin` | 默认不写入；`--include-origin` 时写入 description 附加字段 |
+
+> 合并只发生在 6 邻接的同种方块之间，覆盖区域与原结构完全一致，
+> 转回 `.mcstructure` 时大 cube 会无损展开为原方块（对 `--voxel-size` 还原同样成立）。
 
 **等比缩放示例**：`--scale 2` 后，结构内 `(x,y,z)` 处方块变为 `origin=[2x,2y,2z]`、`size=[2,2,2]` 的 cube；`--scale 0.5` 则变为 `size=[0.5,0.5,0.5]`。骨骼 pivot 和 `visible_bounds` 也会同步缩放。
 
@@ -170,6 +173,7 @@ secondary:minecraft:water[liquid_depth=0]
 | `--map-colors` | 内置表 | 自定义 map 颜色表 JSON（格式见 `data/map_colors.json`） |
 | `--texture-size` | `16` | 贴图单个色块边长（须为 2 的幂） |
 | `--no-texture-shade` | 关 | 关闭 Minecraft 风面着色（顶亮/侧中/底暗） |
+| `--no-merge-voxels` | 关 | 关闭相邻同种方块的合并（默认开启） |
 
 ### `to-structure`（几何 → 结构）
 

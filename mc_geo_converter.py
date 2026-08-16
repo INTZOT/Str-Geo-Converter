@@ -998,6 +998,63 @@ def _cube_uv(bone_name: str, texture: Optional[MapColorTexture]) -> Any:
     }
 
 
+def _merge_cells(
+    positions: Sequence[Tuple[int, int, int]],
+) -> List[Tuple[Tuple[int, int, int], Tuple[int, int, int]]]:
+    """把同材质方块贪心合并为长方体，返回 ``[(origin, size), ...]``（单位=格）。
+
+    沿 x 轴逐切片做二维矩形合并（y 向行段 + z 向扩展），再沿 x 把相同矩形
+    扩展成三维盒子（greedy meshing）。合并只发生在 6 邻接的同种方块之间，
+    覆盖区域与原集合完全一致，转回结构时可无损展开。
+    """
+    by_x: Dict[int, List[Tuple[int, int]]] = {}
+    for x, y, z in positions:
+        by_x.setdefault(x, []).append((y, z))
+
+    boxes: List[List[int]] = []  # [x0, x1, y0, y1, z0, z1]，含端点
+    active: Dict[Tuple[int, int, int, int], List[int]] = {}  # (y0,y1,z0,z1) -> box
+    for x in sorted(by_x):
+        rows: Dict[int, List[List[int]]] = {}
+        for y, z in sorted(by_x[x]):
+            runs = rows.setdefault(y, [])
+            if runs and z == runs[-1][1] + 1:
+                runs[-1][1] = z
+            else:
+                runs.append([z, z])
+
+        rects: List[List[int]] = []  # [y0, y1, z0, z1]
+        for y in sorted(rows):
+            for z0, z1 in rows[y]:
+                merged = False
+                for rect in rects:
+                    if rect[1] == y - 1 and rect[2] == z0 and rect[3] == z1:
+                        rect[1] = y
+                        merged = True
+                        break
+                if not merged:
+                    rects.append([y, y, z0, z1])
+
+        new_active: Dict[Tuple[int, int, int, int], List[int]] = {}
+        for rect in rects:
+            key = (rect[0], rect[1], rect[2], rect[3])
+            box = active.get(key)
+            if box is not None:
+                box[1] = x  # 沿 x 扩展
+                new_active[key] = box
+            else:
+                box = [x, x, rect[0], rect[1], rect[2], rect[3]]
+                boxes.append(box)
+                new_active[key] = box
+        active = new_active
+
+    result: List[Tuple[Tuple[int, int, int], Tuple[int, int, int]]] = []
+    for x0, x1, y0, y1, z0, z1 in boxes:
+        result.append(
+            ((x0, y0, z0), (x1 - x0 + 1, y1 - y0 + 1, z1 - z0 + 1))
+        )
+    return result
+
+
 def structure_to_geometry(
     data: StructureData,
     identifier: str = "",
@@ -1009,6 +1066,7 @@ def structure_to_geometry(
     include_secondary: bool = False,
     include_origin: bool = False,
     scale: Any = 1.0,
+    merge: bool = True,
     texture: Optional[MapColorTexture] = None,
 ) -> Dict[str, Any]:
     """
@@ -1018,6 +1076,11 @@ def structure_to_geometry(
     block at ``(x, y, z)`` becomes a cube with ``origin=[x*s, y*s, z*s]`` and
     ``size=[s, s, s]`` (``s=1`` by default).  Pivot and visible bounds are
     scaled as well.
+
+    ``merge`` (default on) greedily merges adjacent blocks of the same type
+    into single larger cubes, which dramatically reduces cube counts for big
+    structures (and Blockbench render pressure).  Merged cubes voxelise back
+    losslessly.
     """
     scale = _validate_scale(scale)
 
@@ -1036,6 +1099,10 @@ def structure_to_geometry(
         max_y = max(p[1] for p in positions)
         max_z = max(p[2] for p in positions)
         bone_name = encode_block_ref(ref, layer_index)
+        if merge:
+            boxes = _merge_cells(positions)
+        else:
+            boxes = [((x, y, z), (1, 1, 1)) for x, y, z in positions]
         bones.append(
             {
                 "name": bone_name,
@@ -1047,10 +1114,10 @@ def structure_to_geometry(
                 "cubes": [
                     {
                         "origin": [scaled(x), scaled(y), scaled(z)],
-                        "size": [scaled(1), scaled(1), scaled(1)],
+                        "size": [scaled(bx), scaled(by), scaled(bz)],
                         "uv": _cube_uv(bone_name, texture),
                     }
-                    for x, y, z in positions
+                    for (x, y, z), (bx, by, bz) in boxes
                 ],
             }
         )
@@ -1450,16 +1517,22 @@ def run_to_geo(args: argparse.Namespace) -> int:
         include_secondary=args.include_secondary,
         include_origin=args.include_origin,
         scale=args.scale,
+        merge=not args.no_merge_voxels,
         texture=texture,
     )
     with open(output_path, "w", encoding="utf-8") as fileobj:
         json.dump(geometry, fileobj, ensure_ascii=False, indent=2)
         fileobj.write("\n")
     print(f"已写出: {output_path}")
-    print(
-        f"  几何数量: 1  骨骼数量: {len(geometry['minecraft:geometry'][0]['bones'])}  "
-        f"体素大小: {_tidy_number(args.scale)}"
-    )
+    bones = geometry["minecraft:geometry"][0]["bones"]
+    cube_count = sum(len(bone.get("cubes") or []) for bone in bones)
+    if args.no_merge_voxels:
+        print(f"  几何数量: 1  骨骼数量: {len(bones)}  cube 数量: {cube_count}  体素大小: {_tidy_number(args.scale)}")
+    else:
+        print(
+            f"  几何数量: 1  骨骼数量: {len(bones)}  cube 数量: {cube_count}（合并相邻方块）  "
+            f"体素大小: {_tidy_number(args.scale)}"
+        )
     return 0
 
 
@@ -1548,6 +1621,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-texture-shade",
         action="store_true",
         help="关闭 Minecraft 风面着色（默认开启：顶面亮、侧面中、底面暗）",
+    )
+    to_geo.add_argument(
+        "--no-merge-voxels",
+        action="store_true",
+        help="关闭相邻同种方块的合并（默认开启：合并为一个大 cube，显著减少 cube 数量与渲染压力）",
     )
     to_geo.set_defaults(func=run_to_geo)
 
