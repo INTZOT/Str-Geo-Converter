@@ -492,6 +492,7 @@
     "minecraft:nether_brick_slab": "#700200",
     "minecraft:nether_brick_stairs": "#700200",
     "minecraft:nether_gold_ore": "#700200",
+    "minecraft:nether_quartz_ore": "#700200",
     "minecraft:nether_sprouts": "#4c7f99",
     "minecraft:nether_wart": "#993333",
     "minecraft:nether_wart_block": "#993333",
@@ -596,6 +597,7 @@
     "minecraft:purpur_stairs": "#b24cd8",
     "minecraft:quartz_block": "#fffcf5",
     "minecraft:quartz_bricks": "#fffcf5",
+    "minecraft:quartz_double_slab": "#fffcf5",
     "minecraft:quartz_ore": "#700200",
     "minecraft:quartz_pillar": "#fffcf5",
     "minecraft:quartz_slab": "#fffcf5",
@@ -654,6 +656,9 @@
     "minecraft:smithing_table": "#8f7748",
     "minecraft:smoker": "#707070",
     "minecraft:smooth_basalt": "#191919",
+    "minecraft:smooth_quartz": "#fffcf5",
+    "minecraft:smooth_quartz_double_slab": "#fffcf5",
+    "minecraft:smooth_quartz_slab": "#fffcf5",
     "minecraft:smooth_quartz_stairs": "#fffcf5",
     "minecraft:smooth_red_sandstone_stairs": "#d87f33",
     "minecraft:smooth_sandstone_stairs": "#f7e9a3",
@@ -879,6 +884,6 @@
     "source": "comeixalpha.github.io/ref/mapcolors/ + mcpixelart.com + Minecraft Wiki 三源交叉",
     "input_file": "mapcolors_ref.html",
     "generated": "2026-08-17",
-    "block_count": 819
+    "block_count": 824
   }
 }

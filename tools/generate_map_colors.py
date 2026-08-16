@@ -556,6 +556,12 @@ _PIXELART_ADDITIONS = {
     # 树苗：非 tint 方块，用 wiki PLANT 行值
     "minecraft:sapling": "#007c00",
     "minecraft:copper_block": "#d87f33",
+    # 石英建材家族：与石英块同色（#fffcf5，QUARTZ 基色）
+    "minecraft:smooth_quartz": "#fffcf5",
+    "minecraft:quartz_double_slab": "#fffcf5",
+    "minecraft:smooth_quartz_slab": "#fffcf5",
+    "minecraft:smooth_quartz_double_slab": "#fffcf5",
+    "minecraft:nether_quartz_ore": "#700200",
     "minecraft:chiseled_quartz_block": "#fffcf5",
     "minecraft:chiseled_red_sandstone": "#d87f33",
     "minecraft:chiseled_resin_bricks": "#9f5224",
