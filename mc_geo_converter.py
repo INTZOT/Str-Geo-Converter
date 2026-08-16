@@ -705,17 +705,17 @@ DYE_COLORS = {
     "black": (20, 21, 25),
 }
 WOOD_COLORS = {
-    "oak": (107, 107, 74),
-    "spruce": (107, 85, 56),
-    "birch": (214, 210, 157),
-    "jungle": (119, 102, 51),
-    "acacia": (158, 78, 35),
-    "dark_oak": (79, 50, 24),
-    "mangrove": (112, 70, 43),
-    "cherry": (228, 181, 194),
+    "oak": (143, 119, 72),
+    "spruce": (129, 86, 49),
+    "birch": (247, 233, 163),
+    "jungle": (151, 109, 77),
+    "acacia": (216, 127, 51),
+    "dark_oak": (102, 76, 51),
+    "mangrove": (153, 51, 51),
+    "cherry": (209, 177, 161),
     "pale_oak": (255, 252, 245),
-    "crimson": (122, 42, 35),
-    "warped": (46, 110, 93),
+    "crimson": (148, 63, 97),
+    "warped": (58, 142, 140),
 }
 
 
@@ -835,7 +835,60 @@ def map_color_for(ref: BlockRef, table: Dict[str, Any]) -> Tuple[Tuple[int, int,
     base = table.get("colors", {}).get(ref.name)
     if base is not None:
         return _normalize_color(base), True
+    fallback = _material_fallback_color(ref.name, table)
+    if fallback is not None:
+        return fallback, True
     return DEFAULT_MAP_COLOR, False
+
+
+# 变体方块（台阶/楼梯/墙/栅栏/门/活板门/按钮/压力板/告示牌等）按材质归类的回退。
+# Bedrock 中这些方块是独立 ID（或带 state 的合并 ID），颜色应与其基础方块一致。
+_VARIANT_SUFFIXES = (
+    "_double_slab", "_hanging_sign", "_wall_sign", "_standing_sign",
+    "_fence_gate", "_pressure_plate", "_fence", "_trapdoor",
+    "_wall", "_stairs", "_slab", "_button", "_door", "_sign", "_bars",
+)
+_MATERIAL_ALIASES = {
+    "minecraft:quartz": "minecraft:quartz_block",
+    "minecraft:purpur": "minecraft:purpur_block",
+    "minecraft:brick": "minecraft:brick_block",
+    "minecraft:iron": "minecraft:iron_block",
+    "minecraft:gold": "minecraft:gold_block",
+}
+_WOOD_ALIASES = {"wooden": "oak"}  # wooden_door 等旧命名 = 橡木
+
+
+def _material_fallback_color(name: str, table: Dict[str, Any]) -> Optional[Tuple[int, int, int]]:
+    """变体方块按材质归类：'spruce_stairs' -> 云杉木板色、'iron_door' -> 铁色。"""
+    colors = table.get("colors", {})
+    alias = _MATERIAL_ALIASES.get(name)
+    if alias is not None:
+        value = colors.get(alias)
+        if value is not None:
+            return _normalize_color(value)
+    stem = name
+    if stem.startswith("minecraft:double_"):
+        stem = "minecraft:" + stem.split(":", 1)[1][len("double_"):]
+    stem = re.sub(r"\d+$", "", stem)  # 旧命名 stone_slab2 等
+    for suffix in _VARIANT_SUFFIXES:
+        if stem.endswith(suffix):
+            stem = stem[: -len(suffix)]
+            break
+    if stem == name:
+        return None
+    stem = _MATERIAL_ALIASES.get(stem, stem)
+    value = colors.get(stem)
+    if value is not None:
+        return _normalize_color(value)
+    wood = stem.split(":", 1)[1] if ":" in stem else stem
+    wood = _WOOD_ALIASES.get(wood, wood)
+    overrides: Dict[str, Any] = dict(_BUILTIN_STATE_OVERRIDES["wood_type"])
+    table_wood = (table.get("state_overrides") or {}).get("wood_type") or {}
+    overrides.update(table_wood)
+    value = overrides.get(wood)
+    if value is not None:
+        return _normalize_color(value)
+    return None
 
 
 def _next_pow2(value: int) -> int:

@@ -528,6 +528,30 @@ class MapColorTextureTests(unittest.TestCase):
         self.assertTrue(found)
         self.assertEqual(rgb, (0x99, 0x33, 0x33))
 
+    def test_variant_material_fallback(self):
+        table = self._small_table()
+        table["colors"]["minecraft:sandstone"] = "#f7e9a3"
+        table["colors"]["minecraft:mossy_stonebrick"] = "#707070"
+        table["colors"]["minecraft:iron_block"] = "#a7a7a7"
+        table["state_overrides"]["wood_type"] = {"spruce": "#815631"}
+        cases = [
+            ("minecraft:spruce_stairs", (0x81, 0x56, 0x31)),
+            ("minecraft:spruce_slab", (0x81, 0x56, 0x31)),
+            ("minecraft:sandstone_slab", (0xF7, 0xE9, 0xA3)),
+            ("minecraft:sandstone_wall", (0xF7, 0xE9, 0xA3)),
+            ("minecraft:mossy_stonebrick_wall", (0x70, 0x70, 0x70)),
+            ("minecraft:iron_door", (0xA7, 0xA7, 0xA7)),
+            ("minecraft:iron_trapdoor", (0xA7, 0xA7, 0xA7)),
+            ("minecraft:wooden_pressure_plate", (0x8F, 0x77, 0x48)),
+            ("minecraft:unknown_stuff", None),
+        ]
+        for name, expected in cases:
+            rgb, found = m.map_color_for(m.BlockRef(name), table)
+            if expected is None:
+                self.assertFalse(found)
+            else:
+                self.assertEqual(rgb, expected)
+
     def test_cli_map_color_texture_end_to_end(self):
         sample = ROOT / "samples" / "dirt_house.mcstructure"
         if not sample.exists():

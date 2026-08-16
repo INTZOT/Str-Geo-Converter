@@ -111,9 +111,11 @@ structure_to_geometry(texture=)   # cube 写 per-face UV；description 写 textu
 
 颜色查表优先级：方块级 `block_overrides`（如陶瓦 16 色 `stained_hardened_clay`）
 > `state_overrides`（如羊毛 `color="red"` → 红色、木头 `wood_type`）
-> 方块 ID 基色 > 默认灰 `DEFAULT_MAP_COLOR`。内置覆盖表（`DYE_COLORS` /
-`WOOD_COLORS`）是兜底，表内同名字段优先；自定义表经 `--map-colors FILE` 传入，
-格式与 `data/map_colors.json` 一致。内置表以
+> 方块 ID 基色 > 变体材质回退（`_material_fallback_color`：台阶/楼梯/墙/栅栏/
+门/告示牌/栏杆等剥离 `_VARIANT_SUFFIXES` 后查材质基色或木材色，如
+`spruce_stairs` → 云杉木色、`iron_door` → 铁色）> 默认灰 `DEFAULT_MAP_COLOR`。
+内置覆盖表（`DYE_COLORS` / `WOOD_COLORS`）是兜底，表内同名字段优先；自定义表经
+`--map-colors FILE` 传入，格式与 `data/map_colors.json` 一致。内置表以
 [基岩版地图基色表](https://comeixalpha.github.io/ref/mapcolors/) 为底生成
 （`tools/generate_map_colors.py --from-ref`，另支持 `--from-wiki` / `--from-blocks`）。
 
