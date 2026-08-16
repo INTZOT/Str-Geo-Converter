@@ -1,5 +1,7 @@
 # Str-Geo-Converter
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 Minecraft **基岩版（Bedrock Edition）** `.geo.json` 几何模型文件与 `.mcstructure` 结构方块文件的双向转换工具。
 
 > 注意：这里的 `.geo.json` 指 Minecraft 资源包里的 **几何模型 JSON**（Blockbench 导出的模型格式），不是地图领域的 GeoJSON。
@@ -15,6 +17,7 @@ Str-Geo-Converter/
 ├─ requirements.txt           # 依赖：nbtlib
 ├─ CHANGELOG.md               # 版本历史
 ├─ docs/ARCHITECTURE.md       # 内部架构与数据流说明
+├─ LICENSE                    # MIT 许可证
 ├─ examples/
 │  ├─ house.geo.json          # 示例几何模型（小房子）
 │  └─ house.mcstructure       # 由 house.geo.json 生成的结构文件
@@ -202,3 +205,10 @@ python -m unittest discover -s tests -v
 - Bedrock Wiki: [Block Modeling / Geometry](https://wiki.bedrock.dev/visuals/bedrock-modeling)
 
 `samples/` 目录中的真实结构文件来自 [phoenixr-codes/mcstructure](https://github.com/phoenixr-codes/mcstructure)（MIT License，见 `SAMPLES-LICENSE.txt`）。
+
+---
+
+## 许可证
+
+本项目以 [MIT 许可证](LICENSE) 开源（Copyright © 2026 INTZOT）。
+`samples/` 目录中第三方样例的许可见 `SAMPLES-LICENSE.txt`。

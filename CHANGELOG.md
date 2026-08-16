@@ -5,6 +5,10 @@
 
 版本号与 `mc_geo_converter.py` 中的 `__version__` 保持一致。
 
+## [Unreleased]
+
+- 项目以 [MIT 许可证](LICENSE) 开源（Copyright © 2026 INTZOT）。
+
 ## [1.1.0] - 2026-08-17
 
 首次纳入 Git 版本控制（更早的版本历史未保留，此为当前功能基线）。
